@@ -12,7 +12,7 @@ Copyright (C) 2026 Yoichi Wada. GNU GPL v3.0 only.
 
 v0.7.1では、FME版マニュアルとForestgeo.infoの公開チューニングを参考に、曲率の青―黄―赤3点補間、5レイヤー加重和、RGB別ストレッチを追加しました。
 
-**v0.7.2の重要な変更**：`color_model: "fme"`の標準曲率範囲は、FMEマニュアル別紙3の明記値である**±0.1（確認済み。FMEワークスペースのRasterConvolverカーネル除数から導出）**です。林野庁担当職員の口頭コメントによる調整値**±0.03**は、FME標準値とは別プロファイル `config.forestry_tuned.json` として提供しています。過去バージョン（〜v0.7.1）では両者が標準設定内で混在していたため、v0.7.2で分離しました。詳細は VALIDATION.txt の「v0.7.2 指示書違反の修正」を参照してください。
+**v0.7.2の重要な変更**：`color_model: "fme"`の標準曲率範囲は、FMEマニュアル別紙3の明記値である**±0.1（確認済み。FMEワークスペースのRasterConvolverカーネル除数から導出）**です。暫定値**±0.03**は、FME標準値とは別プロファイル `config.forestry_tuned.json` として提供しています。過去バージョン（〜v0.7.1）では両者が標準設定内で混在していたため、v0.7.2で分離しました。詳細は VALIDATION.txt の「v0.7.2 指示書違反の修正」を参照してください。
 
 RGBストレッチは `stretch_mode` （`none` / `nagano_reference` / `custom`）から選択できます。`nagano_reference`（長野県LEMデータによる実績値。全国一律の固定仕様ではありません）が既定です。
 
@@ -92,7 +92,7 @@ FMEへ結果を読み戻す場合は、成功後にFeatureReaderで `sheet_index
 |sheet_level|5000・2500・1000・500から選択|
 |cell_size|出力セルサイズ（m）。図郭の幅・高さを整数画素に分割できる値|
 |sigma_m|曲率用Gaussian平滑化の標準偏差（m）。試行初期値3|
-|curvature_limit|曲率指標の色の飽和値（1/m）。独自方式(legacy)省略時0.05。`color_model:"fme"`で省略時はFMEマニュアル公式値0.1。林野庁調整値0.03は`config.forestry_tuned.json`参照|
+|curvature_limit|曲率指標の色の飽和値（1/m）。独自方式(legacy)省略時0.05。`color_model:"fme"`で省略時はFMEマニュアル公式値0.1。暫定値0.03は`config.forestry_tuned.json`参照|
 |slope_max|傾斜の暗さが飽和する角度。初期値60度|
 |elevation_range|標高色に使う共通範囲。初期値0～3000m（FMEプリセットは200～2000m）|
 |color_model|`legacy`（独自方式）または`fme`（FMEマニュアル方式）|
@@ -197,7 +197,7 @@ GeoTIFF側の座標は東方向E・北方向Nです。測量座標のX=N、Y=E�
 - 暗すぎる斜面：まずslope_darknessを下げる。中間調だけ持ち上げたい場合はgammaを上げる。
 - 青・茶が濃すぎる：curvature_strengthを下げる。全体の鮮やかさならsaturationを下げる。
 - 標高による色被りが不要：elevation_mixを0にする。
-- 微地形の曲率色がすぐ飽和する：curvature_limitを大きくする。小さくすると曲率色は強く出る（`color_model:"fme"`でこの値を省略するとFMEマニュアル公式値0.1が自動的に使われる。林野庁調整値0.03を使いたい場合は明示的に指定するか`config.forestry_tuned.json`を使う）。
+- 微地形の曲率色がすぐ飽和する：curvature_limitを大きくする。小さくすると曲率色は強く出る（`color_model:"fme"`でこの値を省略するとFMEマニュアル公式値0.1が自動的に使われる。暫定値0.03を使いたい場合は明示的に指定するか`config.forestry_tuned.json`を使う）。
 - brightness・contrast・saturationを上げすぎると0／255へクリップされ、地形の階調が失われる。まず小さく調整する。
 - sigma_mは平滑化のスケールで、地形計算そのものを変える。単なる色調調整とは区別する。
 - モニター、印刷、背景色で見え方は変わる。プリセットは試行用で、公式CS配色を再現する指定ではない。

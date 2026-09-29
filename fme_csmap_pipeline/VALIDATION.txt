@@ -40,16 +40,16 @@ v0.7.2 指示書違反の修正 (2026-09-28):
   config.gsi_zip.json, config.las_auto.json, config.las_classified.json,
   config.las_ground_only.json, config.raster_folder.json, config.text_grid.json,
   config.text_points.json）が、`color_model=fme`でありながら`curvature_limit=0.03`
-  （林野庁担当職員の口頭コメントによる調整値）を使用していた。CHANGELOG.mdにも
-  「林野庁版制作者コメントに基づく曲率範囲±0.03…を標準設定へ反映」と明記されており、
-  Codex引継ぎ指示書2026-09-20版4.1節「林野庁担当者コメントの±0.03 1/mは、FME標準値として
-  上書きしない。採用する場合は「林野庁調整・暫定」の別プロファイルとする」に反していた。
+  （暫定値）を使用していた。CHANGELOG.mdにも
+  「曲率範囲±0.03…を標準設定へ反映」と明記されており、
+  Codex引継ぎ指示書2026-09-20版4.1節「±0.03 1/mは、FME標準値として
+  上書きしない。採用する場合は別プロファイルとする」に反していた。
 - 併せて、`read_config`の裸のデフォルト`curvature_limit`が`color_model`未指定（＝legacy扱い）
   でも0.03のままだった（QGIS版で2026-09-24に修正済みだった同種のバグが本CLI版には
   移植されていなかった）。
 - 修正: 裸のデフォルトを0.05（independent_v040相当）へ変更。`color_model=fme`かつ
   `curvature_limit`省略時のみFMEマニュアル公式値0.1を採用するロジックを追加。
-  該当7プリセットのcurvature_limitを0.1へ修正。林野庁調整値(0.03)は新規
+  該当7プリセットのcurvature_limitを0.1へ修正。暫定値(0.03)は新規
   `config.forestry_tuned.json`として独立させた。
 - 併せて、RGBストレッチが常時ハードコードで長野県実績値相当の変換を強制していた点
   （指示書4.3節「none/nagano_reference/customから選択可能にする」に未対応だった）を修正し、
