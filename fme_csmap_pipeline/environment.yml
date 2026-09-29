@@ -1,0 +1,10 @@
+name: csmap
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - gdal>=3.10,<4
+  - numpy>=1.24,<3
+  - scipy>=1.10,<2
+  - pillow
+  - pdal>=2.9,<3

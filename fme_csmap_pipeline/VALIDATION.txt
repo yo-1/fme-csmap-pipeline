@@ -1,0 +1,62 @@
+検証記録 2026-09-13
+
+自動テスト: 49件、成功45件、スキップ4件。
+旧版のCS数値計算・図郭付番・色調・XYZ計算のテストを含む。
+追加検証: GSI格子開始位置・北上配置・欠測・旧文字コード・JGD2024水平識別子、
+テキスト列選択・X/Y順・格子中心・重複/不規則格子の検出、
+再帰ファイル探索、PDALの独立入力分岐・地表面分類条件・補間半径、
+サブプロセス実行と開始前キャンセル。
+森林航空レーザ成果のLEM固定幅・同名CSVメタデータ・座標倍率・NoData、
+CSV/XYZの形式・格子間隔判別、TIFF＋ワールドファイルの組検査、
+TIFF系の分類、ZIP安全展開とパストラバーサル拒否。
+Python構文、JSON設定、ZIP整合性、プラグイン単一ルートを確認。
+v0.7.0でGSI Linear +x-y走査、図郭単位ストリーミング処理コード、
+CRSからの系番号自動判定、規則格子テキストのディスクバックアップ配列化を追加。
+
+未実施: GDAL/PDAL/QGIS/FMEの実機実行・GUIインストール・納品データでの一括変換。
+GDALとPDALがこの作成環境にないため、ZIP→GeoTIFF、LAS/LAZ→DEM及び既存ラスタ→XYZの
+統合テストはスキップ。統合テストコードは同梱している。
+QGIS Processing APIテストはQGIS環境で実行する必要がある。
+SMRF自動分類はコード実装済みだが、実データによる分類精度・処理時間は未検証。
+condaの依存環境の解決・WindowsでのPDAL起動も未検証。
+v0.6.1で、Unicode名LAS/LAZのASCII作業パス化、ASCII名入力の非置換、
+--input-file引数の公開と--input-folderとの排他指定を検証。
+図郭単位ストリーミング処理はGDAL/FME実機での通し確認が必要。
+
+FME版テスト: 展開したfme_csmap_pipelineで python -m unittest discover -s . -p "test_*.py"
+QGIS版エンジンテスト: csmap_sheetsの親で python -m unittest discover -s csmap_sheets/tests -p "test_*.py"
+詳しい利用手順: INPUT_GUIDE_ja.md
+v0.7.1 color correction (2026-09-19):
+- FME manual/FMW constants, five-layer weights and RGB stretch implemented.
+- Independent yellow middle stop and legacy/FME model tests passed.
+- 46 automated tests passed; 3 GDAL/PDAL integration tests skipped in this environment.
+- FME/QGIS Windows pixel-by-pixel comparison remains required.
+
+v0.7.2 指示書違反の修正 (2026-09-28):
+- QGISプラグイン版(csmap_sheets)と本CLI版(fme_csmap_pipeline)は別配布物として保守されており、
+  QGIS版で2026-09-24に修正済みだった不具合が、本CLI版には未反映のまま残っていた。ユーザー指示
+  「CLI版の指示書違反は今回のWebP対応と並行してなおす」（2026-09-28）に基づき以下を修正した。
+- 発見内容: 組込み設定プリセット9個中7個（config.standard.json, config.example.json,
+  config.gsi_zip.json, config.las_auto.json, config.las_classified.json,
+  config.las_ground_only.json, config.raster_folder.json, config.text_grid.json,
+  config.text_points.json）が、`color_model=fme`でありながら`curvature_limit=0.03`
+  （林野庁担当職員の口頭コメントによる調整値）を使用していた。CHANGELOG.mdにも
+  「林野庁版制作者コメントに基づく曲率範囲±0.03…を標準設定へ反映」と明記されており、
+  Codex引継ぎ指示書2026-09-20版4.1節「林野庁担当者コメントの±0.03 1/mは、FME標準値として
+  上書きしない。採用する場合は「林野庁調整・暫定」の別プロファイルとする」に反していた。
+- 併せて、`read_config`の裸のデフォルト`curvature_limit`が`color_model`未指定（＝legacy扱い）
+  でも0.03のままだった（QGIS版で2026-09-24に修正済みだった同種のバグが本CLI版には
+  移植されていなかった）。
+- 修正: 裸のデフォルトを0.05（independent_v040相当）へ変更。`color_model=fme`かつ
+  `curvature_limit`省略時のみFMEマニュアル公式値0.1を採用するロジックを追加。
+  該当7プリセットのcurvature_limitを0.1へ修正。林野庁調整値(0.03)は新規
+  `config.forestry_tuned.json`として独立させた。
+- 併せて、RGBストレッチが常時ハードコードで長野県実績値相当の変換を強制していた点
+  （指示書4.3節「none/nagano_reference/customから選択可能にする」に未対応だった）を修正し、
+  `stretch_mode`／`stretch_range`を追加した。既存プリセットの発色は
+  `stretch_mode="nagano_reference"`を明示することで変更していない。
+- `run.json`の`rendering`ブロックへ、使用した方式・正規化範囲・全LUT色・重み・
+  ストレッチ設定・曲率符号を記録するようにした。
+- 自動テスト62件成功・4件スキップ（この環境にGDAL/PDALがないため）・失敗0件。
+  追加した回帰テスト（ConfigDefaultsTests, StretchModeTests）を含む。
+- 未実施: Windows/QGIS/FME実機でのpixel比較、GDAL/PDAL統合テスト（この環境に両者がないため）。

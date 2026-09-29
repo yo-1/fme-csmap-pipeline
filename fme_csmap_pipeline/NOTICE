@@ -1,0 +1,8 @@
+CS Map Sheets / FME CSMap Pipeline
+Copyright (C) 2026 Yoichi Wada
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License version 3.0 only.
+
+This software creates an independent CS-style terrain visualization and is
+not a pixel-identical reproduction of the Nagano CS Map or other CSMap tools.

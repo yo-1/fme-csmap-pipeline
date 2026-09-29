@@ -1,0 +1,21 @@
+{
+  "inputs": [
+    "D:/CSMap/forest_airborne_laser"
+  ],
+  "output_dir": "D:/CSMap/output/forest_run_001",
+  "input_type": "forest",
+  "input_crs": "EPSG:6677",
+  "target_crs": "EPSG:6677",
+  "sheet_level": 5000,
+  "cell_size": 1.0,
+  "forest_grid_cell": "auto",
+  "forest_axis_order": "north_east",
+  "forest_lem_coordinate_scale": "auto",
+  "forest_nodata": -9999,
+  "recursive": true,
+  "vertical_reference": "測地成果2011",
+  "confirm_elevation_metres": true,
+  "xyz_enabled": true,
+  "xyz_min_zoom": 12,
+  "xyz_max_zoom": 18
+}
