@@ -48,6 +48,7 @@ python -m unittest discover -s . -p "test_*.py" -v
 
 Claude Code から claude.ai（Project）へ伝えることがあるときは、連絡用の Drive フォルダに
 Markdown ファイルを1件追加する。
+Drive に書けないときは、Markdown をユーザーに提示する。
 
 - フォルダ: 「林野庁オープン化_Claude連絡」。フォルダ ID はこのリポジトリが公開のため記載しない。
   非公開の現在地メモまたはユーザーに確認する。
