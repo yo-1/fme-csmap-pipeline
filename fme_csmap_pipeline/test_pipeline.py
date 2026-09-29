@@ -73,7 +73,7 @@ class ConfigDefaultsTests(unittest.TestCase):
 
     color_model=legacy (independent_v040相当) and color_model=fme must never share
     a curvature_limit default: the FME manual's confirmed value (0.1) and the
-    forestry-tuned verbal value (0.03) are distinct profiles that must not silently
+    provisional value (0.03) are distinct profiles that must not silently
     leak into each other via an omitted curvature_limit key.
     """
 

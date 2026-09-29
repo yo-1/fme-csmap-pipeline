@@ -41,7 +41,7 @@ STRETCH_MODES = ('none', 'nagano_reference', 'custom')
 # FMEマニュアル別紙3の明記値（曲率±10 <-> 本プラグイン±0.1 1/mはFMEワークスペースの
 # RasterConvolverカーネル除数 cell_size**2*0.01 から確認済み。VALIDATION.txt参照）。
 FME_MANUAL_CURVATURE_LIMIT = 0.1
-# 林野庁担当職員の口頭コメントによる調整値（一次資料ではなく伝聞情報）。
+# 暫定値（FMEマニュアルの値ではない）。
 # FME標準値(上記)を上書きしてはならず、別プロファイル(config.forestry_tuned.json)としてのみ使用する。
 FORESTRY_TUNED_CURVATURE_LIMIT = 0.03
 
@@ -257,9 +257,9 @@ def read_config(path, overrides=None):
     c.update(overrides or {})
     provided = set(c)
     # 裸のデフォルトはindependent_v040相当（従来の独自方式）の値。FMEマニュアル値(0.1)や
-    # 林野庁調整値(0.03)をここに混在させない。color_model=fmeでcurvature_limit省略時のみ、
+    # 暫定値(0.03)をここに混在させない。color_model=fmeでcurvature_limit省略時のみ、
     # 下でFMEマニュアル公式値へ切り替える（バグ修正: 過去にここが0.03のままだったため、
-    # 独自方式でcurvature_limitを省略した外部configが誤って林野庁調整値相当になっていた）。
+    # 独自方式でcurvature_limitを省略した外部configが誤って暫定値相当になっていた）。
     defaults = dict(sigma_m=3.0, curvature_limit=0.05, slope_max=60.0,
                     elevation_range=[0, 3000], block_size=512, sheet_level=5000,
                     max_sheets=100000, max_sheet_pixels=100000000, compression="DEFLATE",
