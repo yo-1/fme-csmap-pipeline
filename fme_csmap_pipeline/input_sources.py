@@ -131,6 +131,60 @@ def has_world_file(path):
     return any(p.is_file() and p.name.lower() in expected for p in path.parent.iterdir())
 
 
+# 森林航空レーザ成果のテキスト形式（forest_dem.read_lem）で欠測扱いにしている値。
+# TIFFでも同じ値が標高として紛れ込むと、CS立体図に大きな乱れが出る。
+FOREST_NODATA_CODES = (-9999.0, -1111.0)
+
+
+def forest_nodata_codes(band_nodata, forest_nodata):
+    """TIFFのNoData設定とは別に、欠測として扱うべき値を返す。
+
+    gdal.WarpのsrcNodataは1バンドに1値しか指定できないため、NoData設定
+    （band_nodata）と異なる欠測値が画素値に混在していると、その値が標高
+    として扱われる。ここで返す値は mask_forest_nodata_codes() で置き換える。"""
+    codes={float(v) for v in FOREST_NODATA_CODES}
+    if forest_nodata is not None:codes.add(float(forest_nodata))
+    if band_nodata is not None:codes.discard(float(band_nodata))
+    return tuple(sorted(codes))
+
+
+def mask_forest_nodata_codes(path, dest, codes, band_nodata, gdal, feedback=None):
+    """codesに該当する画素をNoDataに置き換えたGeoTIFFをdestに作る。
+
+    該当画素が無ければ何も作らず (path, band_nodata, 0) を返す（大半の入力で
+    コピーを作らないため）。該当があればFloat32のコピーを作り、
+    (dest, 新しいNoData値, 置換件数) を返す。読み書きは512行ずつ行い、
+    入力全体をメモリに載せない。"""
+    if not codes:return path,band_nodata,0
+    src=gdal.Open(str(path))
+    if src is None:raise ValueError('Cannot open forestry TIFF: '+str(path))
+    band=src.GetRasterBand(1);w,h=src.RasterXSize,src.RasterYSize
+    targets=np.asarray(codes,dtype='float64')
+    count=0
+    for row in range(0,h,512):
+        cancelled(feedback)
+        strip=band.ReadAsArray(0,row,w,min(512,h-row))
+        count+=int(np.count_nonzero(np.isin(strip.astype('float64'),targets)))
+    if count==0:
+        src=None
+        return path,band_nodata,0
+    fill=NODATA if band_nodata is None else float(band_nodata)
+    ds=gdal.GetDriverByName('GTiff').Create(str(dest),w,h,1,gdal.GDT_Float32,
+        options=['TILED=YES','COMPRESS=DEFLATE','PREDICTOR=3','BIGTIFF=IF_SAFER'])
+    if ds is None:raise RuntimeError('Cannot create '+str(dest))
+    ds.SetGeoTransform(src.GetGeoTransform())
+    if src.GetProjection():ds.SetProjection(src.GetProjection())
+    out=ds.GetRasterBand(1);out.SetNoDataValue(fill)
+    for row in range(0,h,512):
+        cancelled(feedback)
+        strip=band.ReadAsArray(0,row,w,min(512,h-row)).astype('float32')
+        strip[np.isin(strip.astype('float64'),targets)]=fill
+        if out.WriteArray(strip,0,row)!=0:raise RuntimeError('Raster write failed')
+    ds.FlushCache();ds=src=None
+    return str(dest),fill,count
+
+
+
 def normalize(path, dest, c, gdal, osr, feedback=None, override_nodata=True):
     """Create a disk-backed warped VRT; province-scale data stay virtual."""
     cancelled(feedback)
@@ -291,8 +345,15 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                         raise ValueError('Non-GeoTIFF forestry TIFF requires a same-stem TFW/TIFW/WLD: '+str(path))
                     if not embedded and not c['input_crs'].strip():
                         raise ValueError('TIFF/world-file input has no embedded CRS; specify input_crs: '+str(path))
-                    raw=path;source={**c,'source_nodata':band_nodata if band_nodata is not None else c['forest_nodata']}
-                    report['detected'].append({'path':str(path),'kind':'geotiff' if embedded else 'tiff_worldfile'})
+                    codes=forest_nodata_codes(band_nodata,c['forest_nodata'])
+                    raw,band_nodata,masked=mask_forest_nodata_codes(
+                        path,work/f'forest_masked_{ordinal:06d}.tif',codes,band_nodata,gdal,feedback)
+                    if masked:
+                        say(feedback,f'NoData設定と異なる欠測値（{", ".join(f"{v:g}" for v in codes)}）を'
+                                     f'{masked}画素検出し、NoDataとして扱いました: {path}')
+                    source={**c,'source_nodata':band_nodata if band_nodata is not None else c['forest_nodata']}
+                    report['detected'].append({'path':str(path),'kind':'geotiff' if embedded else 'tiff_worldfile',
+                                               'extra_nodata_cells':masked})
                 aligned=work/f'aligned_{ordinal:06d}.tif'
                 outputs.append(normalize(raw,aligned,source,gdal,osr,feedback,kind=='raster'))
                 report['sources'].append({'path':str(path),'kind':kind});save()
