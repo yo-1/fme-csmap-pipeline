@@ -17,7 +17,7 @@ CRSからの系番号自動判定、規則格子テキストのディスクバ�
 GDALとPDALがこの作成環境にないため、ZIP→GeoTIFF、LAS/LAZ→DEM及び既存ラスタ→XYZの
 統合テストはスキップ。統合テストコードは同梱している。
 QGIS Processing APIテストはQGIS環境で実行する必要がある。
-SMRF自動分類はコード実装済みだが、実データによる分類精度・処理時間は未検証。
+SMRF自動分類はコード実装済みだが、検証用の点群データによる分類精度・処理時間は未検証。
 condaの依存環境の解決・WindowsでのPDAL起動も未検証。
 v0.6.1で、Unicode名LAS/LAZのASCII作業パス化、ASCII名入力の非置換、
 --input-file引数の公開と--input-folderとの排他指定を検証。
