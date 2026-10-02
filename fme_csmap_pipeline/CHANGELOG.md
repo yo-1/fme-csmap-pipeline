@@ -1,4 +1,14 @@
-# 未リリース
+# v0.8.0 - 2026-10-02
+
+**重要（既定動作の変更）**：傾斜の計算方式の既定を、中央差分法からHorn法に変更した。v0.7.2以前と同じ設定でも、傾斜に由来する色が変わる。以前の出力を再現する場合は、設定JSONに`"slope_algorithm": "central_difference"`を指定する。
+
+- 設定キー`slope_algorithm`（`horn`／`central_difference`、既定`horn`）を追加。`legacy`・`fme`のどちらの`color_model`でも使う。不正な値はエラー。
+  - `horn`：Horn (1981) の3×3加重差分。`dz/dx=((z3+2z6+z9)-(z1+2z4+z7))/(8d)`、`dz/dy=((z7+2z8+z9)-(z1+2z2+z3))/(8d)`。
+  - `central_difference`：2点の中央差分。v0.7.2までの計算をそのまま再現する。
+  - どちらも平滑化前のDEMを使う。欠測の扱い（計算に使う範囲に欠測を含む画素を透過）は変更なし。
+- 選んだ方式を`run.json`（`settings`と`rendering.terrain_calculation`）、GeoTIFFの`SETTINGS`・`METHOD`メタデータ、実行ログ（`Slope algorithm: ...`）に記録する。
+- 同梱の設定プリセットは`slope_algorithm`を持たないため、既定のHorn法になる。`config.example.json`にキーの記載例を追加。
+- QGISプラグイン版csmap-sheets v0.10.0と同じ式・同じキー名。PSS版（FMEワークスペース）もHorn法を選んでいるが、欠測の補間・外縁の扱い・平滑化の条件が異なるため、画素単位の完全一致は目標にしない。
 
 - 文書・コメント・画面表示の文言を整理（機能変更なし）。
 - 森林航空レーザ成果のTIFFで、NoData設定と異なる欠測値（`-9999`、`-1111`）が標高として扱われていた不具合を修正。該当画素をNoDataに置き換えたコピーを作業フォルダーに作り、件数をログと`input_report.json`の`extra_nodata_cells`に記録する。該当画素が無い入力ではコピーを作らない。
