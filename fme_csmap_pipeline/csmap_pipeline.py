@@ -17,7 +17,7 @@ import numpy as np
 from scipy.ndimage import gaussian_filter, minimum_filter
 from map_sheets import dimensions, cut_sheets, intersecting_sheets
 
-VERSION = "0.7.2"
+VERSION = "0.8.0"
 from xyz_tiles import DEFAULTS as XYZ_DEFAULTS, validate_xyz, write_xyz
 
 from input_sources import DEFAULTS as INPUT_DEFAULTS, validate_input, discover, prepare_inputs
@@ -41,7 +41,7 @@ STRETCH_MODES = ('none', 'nagano_reference', 'custom')
 # FMEマニュアル別紙3の明記値（曲率±10 <-> 本プラグイン±0.1 1/mはFMEワークスペースの
 # RasterConvolverカーネル除数 cell_size**2*0.01 から確認済み。VALIDATION.txt参照）。
 FME_MANUAL_CURVATURE_LIMIT = 0.1
-# 林野庁担当職員の口頭コメントによる調整値（一次資料ではなく伝聞情報）。
+# 暫定値（FMEマニュアルの値ではない）。
 # FME標準値(上記)を上書きしてはならず、別プロファイル(config.forestry_tuned.json)としてのみ使用する。
 FORESTRY_TUNED_CURVATURE_LIMIT = 0.03
 
@@ -141,8 +141,40 @@ def _fme_relief(raw, slope, curvature, curvature_limit, slope_max, elev_range, c
     return np.clip(rgb, 0, 255)
 
 
+SLOPE_ALGORITHMS = ('horn', 'central_difference')
+SLOPE_DESCRIPTIONS = {
+    'horn': 'Horn (1981) 3x3 weighted differences of unsmoothed elevation (degrees)',
+    'central_difference': '2-point central differences of unsmoothed elevation (degrees)',
+}
+
+
+def slope_gradients(raw, cell, slope_algorithm='horn'):
+    """Return (dz/dx, dz/dy) for the selected slope algorithm.
+
+    Both need only a 1-cell neighbourhood, which the existing
+    ceil(4*sigma_m/cell)+1 halo always covers. Only the magnitude is used
+    downstream (np.hypot), so the sign convention does not affect results.
+    'central_difference' reproduces v0.7.2 and earlier exactly. Same
+    formulas as the QGIS plugin csmap-sheets v0.10.0.
+    """
+    if slope_algorithm not in SLOPE_ALGORITHMS:
+        raise ValueError(f"slope_algorithm must be one of {SLOPE_ALGORITHMS}")
+    if slope_algorithm == 'central_difference':
+        dx = (np.roll(raw, -1, 1) - np.roll(raw, 1, 1)) / (2 * cell)
+        dy = (np.roll(raw, -1, 0) - np.roll(raw, 1, 0)) / (2 * cell)
+        return dx, dy
+    n = np.roll(raw, 1, 0); s = np.roll(raw, -1, 0)
+    w = np.roll(raw, 1, 1); e = np.roll(raw, -1, 1)
+    nw = np.roll(n, 1, 1); ne = np.roll(n, -1, 1)
+    sw = np.roll(s, 1, 1); se = np.roll(s, -1, 1)
+    dx = ((ne + 2 * e + se) - (nw + 2 * w + sw)) / (8 * cell)
+    dy = ((sw + 2 * s + se) - (nw + 2 * n + ne)) / (8 * cell)
+    return dx, dy
+
+
 def relief(z, valid, cell, sigma_m, curvature_limit, slope_max, elev_range, color=None,
-           color_model='legacy', stretch_mode='nagano_reference', stretch_range=None):
+           color_model='legacy', stretch_mode='nagano_reference', stretch_range=None,
+           slope_algorithm='horn'):
     """Return RGBA, slope degrees and negative-Laplacian proxy (1/m).
 
     All samples touching a missing value within the full processing support
@@ -150,6 +182,8 @@ def relief(z, valid, cell, sigma_m, curvature_limit, slope_max, elev_range, colo
     """
     if color_model not in ('legacy', 'fme'):
         raise ValueError("color_model must be legacy or fme")
+    if slope_algorithm not in SLOPE_ALGORITHMS:
+        raise ValueError(f"slope_algorithm must be one of {SLOPE_ALGORITHMS}")
     tone = color_settings(color) if color_model == 'legacy' else None
     radius = math.ceil(4 * sigma_m / cell)
     halo = radius + 1
@@ -158,8 +192,7 @@ def relief(z, valid, cell, sigma_m, curvature_limit, slope_max, elev_range, colo
     smooth = (gaussian_filter(raw, sigma=sigma_m / cell, radius=radius,
                               mode="constant", cval=0)
               if sigma_m > 0 else raw.copy())
-    dx = (np.roll(raw, -1, 1) - np.roll(raw, 1, 1)) / (2 * cell)
-    dy = (np.roll(raw, -1, 0) - np.roll(raw, 1, 0)) / (2 * cell)
+    dx, dy = slope_gradients(raw, cell, slope_algorithm)
     slope = np.degrees(np.arctan(np.hypot(dx, dy)))
     curvature = -(np.roll(smooth, -1, 1) + np.roll(smooth, 1, 1)
                   + np.roll(smooth, -1, 0) + np.roll(smooth, 1, 0)
@@ -235,7 +268,8 @@ def rendering_settings(c):
             'curvature_sign': 'negative=concave/valley/blue; zero=yellow in curvature_b; positive=convex/ridge/red',
             'smoothing': {'gaussian_sigma_m': c['sigma_m']},
             'terrain_calculation': {
-                'slope': 'central differences of unsmoothed elevation (degrees)',
+                'slope': SLOPE_DESCRIPTIONS[c.get('slope_algorithm', 'horn')],
+                'slope_algorithm': c.get('slope_algorithm', 'horn'),
                 'curvature': 'negative Laplacian of Gaussian-smoothed elevation (1/m); FME workspace confirmed same sign/kernel shape (VALIDATION.txt)',
             },
         }
@@ -249,6 +283,10 @@ def rendering_settings(c):
         },
         'colors': tone,
         'smoothing': {'gaussian_sigma_m': c['sigma_m']},
+        'terrain_calculation': {
+            'slope': SLOPE_DESCRIPTIONS[c.get('slope_algorithm', 'horn')],
+            'slope_algorithm': c.get('slope_algorithm', 'horn'),
+        },
     }
 
 
@@ -257,15 +295,18 @@ def read_config(path, overrides=None):
     c.update(overrides or {})
     provided = set(c)
     # 裸のデフォルトはindependent_v040相当（従来の独自方式）の値。FMEマニュアル値(0.1)や
-    # 林野庁調整値(0.03)をここに混在させない。color_model=fmeでcurvature_limit省略時のみ、
+    # 暫定値(0.03)をここに混在させない。color_model=fmeでcurvature_limit省略時のみ、
     # 下でFMEマニュアル公式値へ切り替える（バグ修正: 過去にここが0.03のままだったため、
-    # 独自方式でcurvature_limitを省略した外部configが誤って林野庁調整値相当になっていた）。
+    # 独自方式でcurvature_limitを省略した外部configが誤って暫定値相当になっていた）。
     defaults = dict(sigma_m=3.0, curvature_limit=0.05, slope_max=60.0,
                     elevation_range=[0, 3000], block_size=512, sheet_level=5000,
                     max_sheets=100000, max_sheet_pixels=100000000, compression="DEFLATE",
                     max_pixels=1000000000, source_nodata=None,
                     confirm_elevation_metres=False, color={}, color_model='legacy',
-                    stretch_mode='nagano_reference', stretch_range=None)
+                    stretch_mode='nagano_reference', stretch_range=None,
+                    # v0.8.0: 傾斜計算方式（ユーザー決定、2026-10-02）。既定Horn法。
+                    # 中央差分法はv0.7.2以前の出力の再現用。
+                    slope_algorithm='horn')
     defaults.update(XYZ_DEFAULTS)
     defaults.update(INPUT_DEFAULTS)
     unknown = set(c) - set(defaults) - {"inputs", "output_dir", "target_crs", "cell_size", "plane_zone"}
@@ -276,6 +317,14 @@ def read_config(path, overrides=None):
     validate_xyz(c)
     if c['color_model'] not in ('legacy', 'fme'):
         raise ValueError('color_model must be legacy or fme')
+    if c['slope_algorithm'] not in SLOPE_ALGORITHMS:
+        raise ValueError(f"slope_algorithm must be one of {SLOPE_ALGORITHMS}")
+    if 'slope_algorithm' not in provided:
+        # v0.7.2以前の設定は中央差分法で作られていたため、既定のHorn法が黙って
+        # 適用されると色の変化に気づきにくい。再現方法とあわせて警告する。
+        print("WARNING: slope_algorithm is not set in this configuration; using the default "
+              "'horn'. To reproduce output from v0.7.2 or earlier, set "
+              "\"slope_algorithm\": \"central_difference\".", flush=True)
     if c['color_model'] == 'fme' and 'curvature_limit' not in provided:
         c['curvature_limit'] = FME_MANUAL_CURVATURE_LIMIT
     validate_stretch(c['stretch_mode'], c['stretch_range'])
@@ -402,7 +451,9 @@ def make_relief(dem_path, output_path, c, gdal):
     for i, ci in enumerate((gdal.GCI_RedBand, gdal.GCI_GreenBand,
                              gdal.GCI_BlueBand, gdal.GCI_AlphaBand), 1):
         dst.GetRasterBand(i).SetColorInterpretation(ci)
-    dst.SetMetadataItem("METHOD", "Independent CS-style; negative Laplacian, raw central slope, elevation tint")
+    dst.SetMetadataItem("METHOD", "Independent CS-style; negative Laplacian, raw "
+                        + {"horn": "Horn", "central_difference": "central"}[c.get("slope_algorithm", "horn")]
+                        + " slope, elevation tint")
     dst.SetMetadataItem("SETTINGS", json.dumps(c, ensure_ascii=True))
     halo = math.ceil(4*c["sigma_m"]/c["cell_size"])+1
     block = c["block_size"]
@@ -418,7 +469,7 @@ def make_relief(dem_path, output_path, c, gdal):
             rgba, _, _ = relief(a, valid, c["cell_size"], c["sigma_m"],
                 c["curvature_limit"], c["slope_max"], c["elevation_range"], c.get('color'),
                 c.get('color_model', 'legacy'), c.get('stretch_mode', 'nagano_reference'),
-                c.get('stretch_range'))
+                c.get('stretch_range'), c.get('slope_algorithm', 'horn'))
             tile = rgba[y-y0:y-y0+bh, x-x0:x-x0+bw]
             valid_count += int(np.count_nonzero(tile[:, :, 3]))
             for b in range(4):
@@ -525,6 +576,7 @@ def run(c):
         manifest["stage"] = "mosaic"
         save()
         print(f"Mosaic: {len(c['inputs'])} DEM files", flush=True)
+        print("Slope algorithm: " + c.get("slope_algorithm", "horn"), flush=True)
         kwargs = dict(resolution="highest", VRTNodata=NODATA, strict=True)
         if c["source_nodata"] is not None:
             kwargs["srcNodata"] = c["source_nodata"]

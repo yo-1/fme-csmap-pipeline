@@ -9,6 +9,7 @@
   "sigma_m": 3.0,
   "curvature_limit": 0.1,
   "slope_max": 60.0,
+  "slope_algorithm": "horn",
   "elevation_range": [
     200,
     2000
