@@ -1,0 +1,35 @@
+name: tests
+
+# 第1段階: GDAL / PDAL なしで実行できるテストだけを回す。
+# GDAL を必要とするテストは各テスト側で自動的にスキップされる
+# （スキップ分は未実行であり、合格を意味しない）。
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: fme_csmap_pipeline
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install numpy scipy
+      - name: Compile
+        run: python -m compileall -q .
+      - name: Unit tests
+        run: python -m unittest discover -s . -p "test_*.py" -v
