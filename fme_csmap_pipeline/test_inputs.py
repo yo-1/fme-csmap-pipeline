@@ -206,6 +206,18 @@ class InputTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):points.run_process(sys.executable,['-c','pass'],log,Feedback())
 
 
+    def test_forest_nodata_codes_excludes_band_nodata(self):
+        self.assertEqual(inputs.forest_nodata_codes(-9999.,-9999.),(-1111.,))
+        self.assertEqual(inputs.forest_nodata_codes(-32768.,-9999.),(-9999.,-1111.))
+        self.assertEqual(inputs.forest_nodata_codes(None,None),(-9999.,-1111.))
+        self.assertEqual(inputs.forest_nodata_codes(None,-5.),(-9999.,-1111.,-5.))
+
+    def test_mask_forest_nodata_codes_skips_open_when_no_codes(self):
+        class NoGDAL:
+            def Open(self,path):raise AssertionError('must not open')
+        self.assertEqual(inputs.mask_forest_nodata_codes('a.tif','b.tif',(),None,NoGDAL()),('a.tif',None,0))
+
+
 @unittest.skipUnless(importlib.util.find_spec('osgeo'),'GDAL unavailable')
 class GDALInputTests(unittest.TestCase):
     def test_zipped_xml_to_aligned_dem(self):
@@ -225,6 +237,50 @@ class GDALInputTests(unittest.TestCase):
             a=ds.ReadAsArray();np.testing.assert_allclose(a[a!=inputs.NODATA],100.,atol=.001)
             ds=None
             self.assertFalse((root/'not-extracted.xml').exists())
+
+
+    def _forest_tiff(self, gdal, osr, path, array, nodata):
+        ds=gdal.GetDriverByName('GTiff').Create(str(path),array.shape[1],array.shape[0],1,gdal.GDT_Float32)
+        ds.SetGeoTransform((0.,1.,0.,10.,0.,-1.))
+        srs=osr.SpatialReference();srs.ImportFromEPSG(6677);ds.SetProjection(srs.ExportToWkt())
+        if nodata is not None:ds.GetRasterBand(1).SetNoDataValue(nodata)
+        ds.GetRasterBand(1).WriteArray(array);ds=None
+
+    def _prepare_forest(self, gdal, osr, root, array, nodata, **kwargs):
+        tif=root/'dem.tif';self._forest_tiff(gdal,osr,tif,array,nodata)
+        c=config(input_type='forest',inputs=[str(tif)],**kwargs)
+        result,report=inputs.prepare_inputs(c,root/'work',gdal,osr)
+        ds=gdal.Open(result['inputs'][0]);a=ds.ReadAsArray();ds=None
+        return a,report
+
+    def test_forest_tiff_masks_codes_that_differ_from_nodata_tag(self):
+        from osgeo import gdal,osr
+        array=np.full((10,10),100.,dtype='float32')
+        array[2,2]=-9999.;array[5,5]=-1111.;array[8,8]=-32768.
+        with tempfile.TemporaryDirectory() as tmp:
+            a,report=self._prepare_forest(gdal,osr,Path(tmp),array,-32768.)
+            self.assertEqual(report['detected'][0]['extra_nodata_cells'],2)
+            valid=a[a!=inputs.NODATA]
+            self.assertTrue(valid.size>0)
+            np.testing.assert_allclose(valid,100.,atol=.001)
+
+    def test_forest_tiff_without_nodata_tag_masks_both_codes(self):
+        from osgeo import gdal,osr
+        array=np.full((10,10),100.,dtype='float32');array[2,2]=-9999.;array[5,5]=-1111.
+        with tempfile.TemporaryDirectory() as tmp:
+            a,report=self._prepare_forest(gdal,osr,Path(tmp),array,None)
+            self.assertEqual(report['detected'][0]['extra_nodata_cells'],2)
+            np.testing.assert_allclose(a[a!=inputs.NODATA],100.,atol=.001)
+
+    def test_forest_tiff_without_extra_codes_is_not_copied(self):
+        from osgeo import gdal,osr
+        array=np.full((10,10),100.,dtype='float32');array[2,2]=-9999.
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            a,report=self._prepare_forest(gdal,osr,root,array,-9999.)
+            self.assertEqual(report['detected'][0]['extra_nodata_cells'],0)
+            self.assertEqual(list((root/'work').glob('forest_masked_*')),[])
+            np.testing.assert_allclose(a[a!=inputs.NODATA],100.,atol=.001)
 
 
 @unittest.skipUnless(importlib.util.find_spec('osgeo') and shutil.which('pdal'),'GDAL/PDAL unavailable')
