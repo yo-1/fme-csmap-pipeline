@@ -5,7 +5,8 @@ from pathlib import Path
 import tempfile
 import unittest
 import numpy as np
-from csmap_pipeline import (relief, run, read_config, validate_stretch,
+from csmap_pipeline import (relief, run, read_config, validate_stretch, slope_gradients,
+                            rendering_settings,
                             FME_MANUAL_CURVATURE_LIMIT, FORESTRY_TUNED_CURVATURE_LIMIT)
 
 
@@ -109,6 +110,99 @@ class ConfigDefaultsTests(unittest.TestCase):
         self.assertNotEqual(FME_MANUAL_CURVATURE_LIMIT, FORESTRY_TUNED_CURVATURE_LIMIT)
         self.assertAlmostEqual(FME_MANUAL_CURVATURE_LIMIT, 0.1)
         self.assertAlmostEqual(FORESTRY_TUNED_CURVATURE_LIMIT, 0.03)
+
+    def test_slope_algorithm_defaults_to_horn_and_is_validated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(read_config(self._write(tmp, {}))['slope_algorithm'], 'horn')
+        with tempfile.TemporaryDirectory() as tmp:
+            c = read_config(self._write(tmp, dict(slope_algorithm='central_difference')))
+            self.assertEqual(c['slope_algorithm'], 'central_difference')
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(ValueError, 'slope_algorithm must be one of'):
+                read_config(self._write(tmp, dict(slope_algorithm='bogus')))
+
+    def test_warns_only_when_slope_algorithm_is_missing(self):
+        import contextlib, io
+        with tempfile.TemporaryDirectory() as tmp:
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                read_config(self._write(tmp, {}))
+            self.assertIn('slope_algorithm is not set', out.getvalue())
+            self.assertIn('central_difference', out.getvalue())
+        with tempfile.TemporaryDirectory() as tmp:
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                read_config(self._write(tmp, dict(slope_algorithm='horn')))
+            self.assertNotIn('slope_algorithm is not set', out.getvalue())
+
+
+class SlopeAlgorithmTests(unittest.TestCase):
+    """v0.8.0: 傾斜計算方式の選択（ユーザー決定、2026-10-02）。csmap-sheets v0.10.0と同じ式。"""
+
+    def test_constant_surface_gives_zero_slope_for_both_algorithms(self):
+        z = np.full((9, 9), 123.4)
+        for algorithm in ('horn', 'central_difference'):
+            dx, dy = slope_gradients(z, 2.0, algorithm)
+            np.testing.assert_allclose(np.degrees(np.arctan(np.hypot(dx, dy))), 0.0, atol=1e-12)
+
+    def test_planar_slope_matches_analytic_angle(self):
+        yy, xx = np.mgrid[:11, :11].astype(float)
+        cell, gx, gy = 0.5, 0.7, -0.4
+        plane = 50 + gx * xx * cell + gy * yy * cell
+        expected = np.degrees(np.arctan(np.hypot(gx, gy)))
+        for algorithm in ('horn', 'central_difference'):
+            dx, dy = slope_gradients(plane, cell, algorithm)
+            self.assertAlmostEqual(float(np.degrees(np.arctan(np.hypot(dx, dy)))[5, 5]), expected, places=9)
+
+    def test_horn_matches_hand_calculation_on_nonlinear_3x3(self):
+        z = np.array([[1, 2, 4], [3, 5, 8], [6, 9, 13]], dtype=float)
+        dx, dy = slope_gradients(z, 1.0, 'horn')
+        self.assertAlmostEqual(abs(float(dx[1, 1])), 2.5)
+        self.assertAlmostEqual(abs(float(dy[1, 1])), 3.5)
+
+    def test_central_difference_reproduces_v0_7_2_formula(self):
+        rng = np.random.default_rng(7)
+        z = rng.normal(300, 20, (17, 19)); cell = 1.5
+        dx, dy = slope_gradients(z, cell, 'central_difference')
+        np.testing.assert_array_equal(dx, (np.roll(z, -1, 1) - np.roll(z, 1, 1)) / (2 * cell))
+        np.testing.assert_array_equal(dy, (np.roll(z, -1, 0) - np.roll(z, 1, 0)) / (2 * cell))
+
+    def test_relief_default_is_horn_and_invalid_raises(self):
+        y, x = np.mgrid[:41, :41]
+        a = 500 + 5 * np.sin(x / 6) + 3 * np.cos(y / 9)
+        default = relief(a, np.isfinite(a), 1, 2, .05, 60, [0, 3000])
+        horn = relief(a, np.isfinite(a), 1, 2, .05, 60, [0, 3000], slope_algorithm='horn')
+        np.testing.assert_array_equal(default[1], horn[1])
+        with self.assertRaisesRegex(ValueError, 'slope_algorithm must be one of'):
+            relief(a, np.isfinite(a), 1, 2, .05, 60, [0, 3000], slope_algorithm='bogus')
+
+    def test_horn_nodata_neighbourhood_and_edges_are_transparent(self):
+        y, x = np.mgrid[:21, :21]
+        a = (200 + 3 * np.sin(x / 3) + 2 * np.cos(y / 4)).astype(float)
+        valid = np.ones(a.shape, bool); valid[10, 10] = False; a[10, 10] = np.nan
+        for model in ('legacy', 'fme'):
+            alpha = relief(a, valid, 1, 0, .05, 60, [0, 3000], {}, model, slope_algorithm='horn')[0][:, :, 3]
+            for r, c in ((9, 9), (9, 11), (11, 9), (11, 11), (10, 9), (9, 10)):
+                self.assertEqual(alpha[r, c], 0, (model, r, c))
+            self.assertGreater(alpha[12, 12], 0)
+            self.assertTrue((alpha[0, :] == 0).all() and (alpha[:, -1] == 0).all())
+
+    def test_block_split_has_no_seam_for_both_algorithms(self):
+        y, x = np.mgrid[:60, :50]
+        a = 500 + 5 * np.sin(x / 6) + 3 * np.cos(y / 9) + .002 * (x - 25) ** 2
+        valid = np.isfinite(a); sigma = 2; halo = int(np.ceil(4 * sigma / 1)) + 1
+        for algorithm in ('horn', 'central_difference'):
+            full = relief(a, valid, 1, sigma, .05, 60, [0, 3000], slope_algorithm=algorithm)[0]
+            part = relief(a[:40], valid[:40], 1, sigma, .05, 60, [0, 3000], slope_algorithm=algorithm)[0]
+            np.testing.assert_array_equal(part[halo:40 - halo], full[halo:40 - halo])
+
+    def test_rendering_record_reflects_slope_algorithm_for_both_models(self):
+        for model in ('legacy', 'fme'):
+            for algorithm in ('horn', 'central_difference'):
+                c = dict(color_model=model, elevation_range=[0, 3000], slope_max=60,
+                         curvature_limit=.1, sigma_m=3, color={}, slope_algorithm=algorithm)
+                record = rendering_settings(c)['terrain_calculation']
+                self.assertEqual(record['slope_algorithm'], algorithm)
 
 
 class StretchModeTests(unittest.TestCase):
