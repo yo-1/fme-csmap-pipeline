@@ -121,6 +121,20 @@ class ConfigDefaultsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'slope_algorithm must be one of'):
                 read_config(self._write(tmp, dict(slope_algorithm='bogus')))
 
+    def test_warns_only_when_slope_algorithm_is_missing(self):
+        import contextlib, io
+        with tempfile.TemporaryDirectory() as tmp:
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                read_config(self._write(tmp, {}))
+            self.assertIn('slope_algorithm is not set', out.getvalue())
+            self.assertIn('central_difference', out.getvalue())
+        with tempfile.TemporaryDirectory() as tmp:
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                read_config(self._write(tmp, dict(slope_algorithm='horn')))
+            self.assertNotIn('slope_algorithm is not set', out.getvalue())
+
 
 class SlopeAlgorithmTests(unittest.TestCase):
     """v0.8.0: 傾斜計算方式の選択（ユーザー決定、2026-10-02）。csmap-sheets v0.10.0と同じ式。"""

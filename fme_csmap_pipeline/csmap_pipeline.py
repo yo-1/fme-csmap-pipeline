@@ -319,6 +319,12 @@ def read_config(path, overrides=None):
         raise ValueError('color_model must be legacy or fme')
     if c['slope_algorithm'] not in SLOPE_ALGORITHMS:
         raise ValueError(f"slope_algorithm must be one of {SLOPE_ALGORITHMS}")
+    if 'slope_algorithm' not in provided:
+        # v0.7.2以前の設定は中央差分法で作られていたため、既定のHorn法が黙って
+        # 適用されると色の変化に気づきにくい。再現方法とあわせて警告する。
+        print("WARNING: slope_algorithm is not set in this configuration; using the default "
+              "'horn'. To reproduce output from v0.7.2 or earlier, set "
+              "\"slope_algorithm\": \"central_difference\".", flush=True)
     if c['color_model'] == 'fme' and 'curvature_limit' not in provided:
         c['curvature_limit'] = FME_MANUAL_CURVATURE_LIMIT
     validate_stretch(c['stretch_mode'], c['stretch_range'])

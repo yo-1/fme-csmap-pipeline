@@ -8,6 +8,7 @@
   - どちらも平滑化前のDEMを使う。欠測の扱い（計算に使う範囲に欠測を含む画素を透過）は変更なし。
 - 選んだ方式を`run.json`（`settings`と`rendering.terrain_calculation`）、GeoTIFFの`SETTINGS`・`METHOD`メタデータ、実行ログ（`Slope algorithm: ...`）に記録する。
 - 同梱の設定プリセットは`slope_algorithm`を持たないため、既定のHorn法になる。`config.example.json`にキーの記載例を追加。
+- 設定に`slope_algorithm`が無い場合（v0.7.2以前の設定など）は、Horn法を使うことと、中央差分法で以前の出力を再現できることを実行時に警告（`WARNING: slope_algorithm is not set ...`）として表示する。
 - QGISプラグイン版csmap-sheets v0.10.0と同じ式・同じキー名。PSS版（FMEワークスペース）もHorn法を選んでいるが、欠測の補間・外縁の扱い・平滑化の条件が異なるため、画素単位の完全一致は目標にしない。
 
 - 文書・コメント・画面表示の文言を整理（機能変更なし）。
