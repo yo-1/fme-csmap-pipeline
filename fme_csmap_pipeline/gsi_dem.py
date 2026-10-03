@@ -19,7 +19,15 @@ def child(element, name, required=True):
 
 
 def traversal_indices(lo, hi, start, order):
-    """Return GridEnvelope indices in the declared GML linear traversal."""
+    """Return GridEnvelope indices in the declared GML linear traversal.
+
+    The first axis in ``order`` changes fastest.  The sign is the geographic
+    direction: ``+x`` is eastward and ``-y`` is southward.  The grid row index
+    starts at the north edge (row 0 is the top row, as placed by parse_dem), so
+    ``-y`` means an increasing row index and ``+y`` a decreasing one.  GSI DEM1A/
+    DEM5A/DEM10B files use ``+x-y`` with ``startPoint`` on row 0; a non-zero
+    ``startPoint`` means the cells before it are absent (NoData).
+    """
     match = re.fullmatch(r'([+-])([xy])([+-])([xy])', order.replace(' ', ''))
     if match is None or match.group(2) == match.group(4):
         raise ValueError('Unsupported GSI grid traversal order: '+order)
@@ -28,7 +36,12 @@ def traversal_indices(lo, hi, start, order):
     ranges = {}
     for axis, sign in axes:
         low, high = limits[axis]
-        ranges[axis] = range(low, high+1) if sign == '+' else range(high, low-1, -1)
+        # y軸の符号を地理的な向きとして解釈する（-yは南向き＝行番号が増える方向）。
+        # 以前は+/-を行番号の増減として扱っていたため、国土地理院の実データ（+x-y、
+        # startPoint 0 0）が最終行から走査され、"Too many GSI tuples"で読み込めなかった。
+        # csmap-sheets #15 と同じ修正。
+        increasing = (sign == '+') if axis == 'x' else (sign == '-')
+        ranges[axis] = range(low, high+1) if increasing else range(high, low-1, -1)
     coords=[]
     fast, slow = axes[0][0], axes[1][0]
     for slow_value in ranges[slow]:

@@ -19,7 +19,7 @@ def config(**kwargs):
             'max_pixels':10000000,**kwargs}
 
 
-def xml(values='地表面,10\n地表面,0\n海水面,0\n地表面,-9999\n地表面,-2',start='1 0',crs='fguuid:jgd2011.bl',order='+x+y'):
+def xml(values='地表面,10\n地表面,0\n海水面,0\n地表面,-9999\n地表面,-2',start='1 0',crs='fguuid:jgd2011.bl',order='+x-y'):
     return f'''<?xml version="1.0" encoding="UTF-8"?>
 <Dataset xmlns="http://fgd.gsi.go.jp/spec/2008/FGD_GMLSchema" xmlns:gml="http://www.opengis.net/gml/3.2">
 <DEM><mesh>533900</mesh><coverage>
@@ -108,11 +108,25 @@ class InputTests(unittest.TestCase):
         self.assertEqual(np.count_nonzero(a!=inputs.NODATA),1)
         self.assertEqual(list(gsi.parse_dem(b'<metadata/>')),[])
 
-    def test_gsi_accepts_reverse_y_linear_traversal(self):
+    def test_gsi_accepts_northward_linear_traversal(self):
+        # +yは北向き：最下行（行番号1）から上へ走査する
         a,_,_,meta=next(gsi.parse_dem(xml('地表面,1\n地表面,2\n地表面,3\n地表面,4\n地表面,5\n地表面,6',
-            start='0 1',order='+x-y')))
+            start='0 1',order='+x+y')))
         np.testing.assert_array_equal(a,[[4,5,6],[1,2,3]])
-        self.assertEqual(meta['traversal_order'],'+x-y')
+        self.assertEqual(meta['traversal_order'],'+x+y')
+
+    def test_gsi_real_layout_full_grid_from_north_west(self):
+        # 国土地理院の実データと同じ形（+x-y、startPoint 0 0、格子の全セル分のタプル）。
+        # v0.8.0までは最終行から走査したため"Too many GSI tuples"で失敗していた。
+        a,gt,_,meta=next(gsi.parse_dem(xml('地表面,1\n地表面,2\n地表面,3\n地表面,4\n地表面,5\n地表面,6',
+            start='0 0',order='+x-y')))
+        np.testing.assert_array_equal(a,[[1,2,3],[4,5,6]])
+        self.assertEqual(meta['populated_count'],6)
+        np.testing.assert_allclose(gt,[139,.001,0,35.002,0,-.001])
+
+    def test_gsi_too_many_tuples_still_rejected(self):
+        with self.assertRaises(ValueError):
+            list(gsi.parse_dem(xml('\n'.join(['地表面,1']*7),start='0 0',order='+x-y')))
 
     def test_gsi_unknown_crs_not_guessed(self):
         _,_,srs,_=next(gsi.parse_dem(xml(crs='EPSG:4326')))
