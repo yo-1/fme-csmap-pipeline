@@ -17,7 +17,7 @@ import numpy as np
 from scipy.ndimage import gaussian_filter, minimum_filter
 from map_sheets import dimensions, cut_sheets, intersecting_sheets
 
-VERSION = "0.8.0"
+VERSION = "0.8.1"
 from xyz_tiles import DEFAULTS as XYZ_DEFAULTS, validate_xyz, write_xyz
 
 from input_sources import DEFAULTS as INPUT_DEFAULTS, validate_input, discover, prepare_inputs
