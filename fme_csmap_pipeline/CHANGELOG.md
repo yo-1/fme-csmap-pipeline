@@ -1,5 +1,6 @@
 # 未リリース
 
+- 国土地理院DEM（基盤地図情報 数値標高モデル、GML）を読み込めない不具合を修正。GMLの走査順（`sequenceRule`の`+x-y`）のy軸の符号を、行番号の増減ではなく地理的な向き（`-y`＝南向き）として解釈するように`gsi_dem.py`の`traversal_indices()`を修正した。以前は実データ（`+x-y`、`startPoint 0 0`）を最終行から走査してしまい、「Too many GSI tuples for GridEnvelope/startPoint」で停止していた。QGISプラグイン版（csmap-sheets）で実機により再現・修正を確認した不具合と同じもので、同じ修正を反映した。実データと同じ形の回帰テストを追加。
 - XYZタイルの最大ズームの既定値を18から16に変更（`xyz_tiles.py`の`DEFAULTS`、CLIの`--max-zoom`、同梱の設定ファイル14件、README）。QGISプラグイン版（csmap-sheets v0.9.4以降）と揃えた。18では広域・高解像度データで候補タイル数が上限（`xyz_max_tiles`）を超えやすい。従来どおりにする場合は設定で`"xyz_max_zoom": 18`を指定する。同梱の設定と既定値の一致を確認するテストを追加。
 - `VALIDATION.txt`の「実データ」を「検証用の点群データ」に言い換え（文書のみ。機能変更なし）。
 
