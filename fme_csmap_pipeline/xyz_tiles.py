@@ -4,7 +4,9 @@ import math
 from pathlib import Path
 
 HALF_WORLD = math.pi * 6378137.0
-DEFAULTS = dict(xyz_enabled=True, xyz_min_zoom=12, xyz_max_zoom=18,
+# 最大ズームの既定はQGISプラグイン版（csmap-sheets v0.9.4以降）と同じ16。
+# 18では広域・高解像度データで候補タイル数がxyz_max_tilesの上限を超えやすい。
+DEFAULTS = dict(xyz_enabled=True, xyz_min_zoom=12, xyz_max_zoom=16,
                 xyz_max_tiles=100000)
 
 
@@ -133,15 +135,20 @@ def write_xyz(source, destination, c, gdal, osr, feedback=None):
         src = None
 
 
-if __name__ == '__main__':
+def build_cli_parser():
+    """CLIの引数定義。既定値はDEFAULTSから取り、設定ファイル経由の実行と食い違わないようにする。"""
     import argparse
-    from osgeo import gdal, osr
     p = argparse.ArgumentParser(description='Existing CS RGBA GeoTIFF -> XYZ PNG')
     p.add_argument('--input',required=True)
     p.add_argument('--output',required=True,help='New folder, must not exist')
-    p.add_argument('--min-zoom',type=int,default=12)
-    p.add_argument('--max-zoom',type=int,default=18)
-    p.add_argument('--max-tiles',type=int,default=100000)
-    a = p.parse_args()
+    p.add_argument('--min-zoom',type=int,default=DEFAULTS['xyz_min_zoom'])
+    p.add_argument('--max-zoom',type=int,default=DEFAULTS['xyz_max_zoom'])
+    p.add_argument('--max-tiles',type=int,default=DEFAULTS['xyz_max_tiles'])
+    return p
+
+
+if __name__ == '__main__':
+    from osgeo import gdal, osr
+    a = build_cli_parser().parse_args()
     gdal.UseExceptions()
     write_xyz(a.input,a.output,dict(xyz_min_zoom=a.min_zoom,xyz_max_zoom=a.max_zoom,xyz_max_tiles=a.max_tiles),gdal,osr)

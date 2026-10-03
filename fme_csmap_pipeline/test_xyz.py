@@ -55,4 +55,25 @@ class XYZTests(unittest.TestCase):
                 write_xyz(src,root/'limited',dict(xyz_min_zoom=1,xyz_max_zoom=2,xyz_max_tiles=1),gdal,osr)
             self.assertFalse((root/'limited').exists())
 
+    def test_default_max_zoom_is_16(self):
+        # QGISプラグイン版（csmap-sheets v0.9.4以降）と同じ既定値
+        self.assertEqual(DEFAULTS['xyz_max_zoom'], 16)
+
+    def test_cli_defaults_match_defaults(self):
+        a=build_cli_parser().parse_args(['--input','in.tif','--output','out'])
+        self.assertEqual((a.min_zoom,a.max_zoom,a.max_tiles),
+                         (DEFAULTS['xyz_min_zoom'],DEFAULTS['xyz_max_zoom'],DEFAULTS['xyz_max_tiles']))
+        b=build_cli_parser().parse_args(['--input','i','--output','o','--max-zoom','18'])
+        self.assertEqual(b.max_zoom,18)
+
+    def test_bundled_configs_follow_default_max_zoom(self):
+        # 同梱の設定ファイルの最大ズームが既定値と食い違わないこと（以前は18のまま残っていた）
+        import json
+        configs=sorted(Path(__file__).resolve().parent.glob('config*.json'))
+        self.assertTrue(configs)
+        for path in configs:
+            c=json.loads(path.read_text(encoding='utf-8-sig'))
+            if 'xyz_max_zoom' in c:
+                self.assertEqual(c['xyz_max_zoom'],DEFAULTS['xyz_max_zoom'],path.name)
+
 if __name__=='__main__':unittest.main()
