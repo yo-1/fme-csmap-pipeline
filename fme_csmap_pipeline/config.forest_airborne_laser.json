@@ -17,5 +17,5 @@
   "confirm_elevation_metres": true,
   "xyz_enabled": true,
   "xyz_min_zoom": 12,
-  "xyz_max_zoom": 18
+  "xyz_max_zoom": 16
 }
