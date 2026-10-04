@@ -290,6 +290,20 @@ def rendering_settings(c):
     }
 
 
+def mosaic_message(c, input_report):
+    """Log line for the mosaic stage (same wording as csmap-sheets).
+
+    For GSI DEMs the prepared inputs are groups of tiles sharing one pixel grid
+    (normalize_gsi_groups), not individual files, so say so.
+    """
+    count = len(c['inputs'])
+    sources = len(input_report.get('sources', [])) if isinstance(input_report, dict) else 0
+    if c.get('input_type') == 'gsi' and sources:
+        return (f"Mosaic: {count} grid groups from {sources} GSI DEM tiles "
+                "(tiles sharing a pixel grid are merged into one group)")
+    return f"Mosaic: {count} DEM files"
+
+
 def read_config(path, overrides=None):
     c = json.loads(path.read_text(encoding="utf-8-sig"))
     c.update(overrides or {})
@@ -575,7 +589,7 @@ def run(c):
         manifest["sources"] = check_sources(c, gdal, osr)
         manifest["stage"] = "mosaic"
         save()
-        print(f"Mosaic: {len(c['inputs'])} DEM files", flush=True)
+        print(mosaic_message(c, input_report), flush=True)
         print("Slope algorithm: " + c.get("slope_algorithm", "horn"), flush=True)
         kwargs = dict(resolution="highest", VRTNodata=NODATA, strict=True)
         if c["source_nodata"] is not None:
