@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 import numpy as np
-from csmap_pipeline import (relief, run, read_config, validate_stretch, slope_gradients,
+from csmap_pipeline import (relief, run, read_config, mosaic_message, validate_stretch, slope_gradients,
                             rendering_settings,
                             FME_MANUAL_CURVATURE_LIMIT, FORESTRY_TUNED_CURVATURE_LIMIT)
 
@@ -281,6 +281,18 @@ class IntegrationTests(unittest.TestCase):
             left=right=None
             self.assertTrue((root/'result/sheet_index.gpkg').exists())
             self.assertEqual(json.loads((root/"result/run.json").read_text(encoding="utf-8"))["status"], "completed")
+
+
+class MosaicMessageTests(unittest.TestCase):
+    def test_gsi_reports_groups_and_tiles(self):
+        self.assertEqual(mosaic_message({'input_type': 'gsi', 'inputs': ['a.tif'] * 7},
+                                        {'sources': [{}] * 100}),
+                         'Mosaic: 7 grid groups from 100 GSI DEM tiles '
+                         '(tiles sharing a pixel grid are merged into one group)')
+
+    def test_other_inputs_keep_previous_wording(self):
+        self.assertEqual(mosaic_message({'input_type': 'raster', 'inputs': ['a', 'b']},
+                                        {'sources': [{}, {}]}), 'Mosaic: 2 DEM files')
 
 
 if __name__ == "__main__":
