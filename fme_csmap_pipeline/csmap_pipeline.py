@@ -172,26 +172,76 @@ def slope_gradients(raw, cell, slope_algorithm='horn'):
     return dx, dy
 
 
+SIGMA_UNITS = ('m', 'px')
+
+
+def gaussian_sigma(c):
+    """Return (sigma in calculation-grid pixels, kernel radius in pixels) for a config.
+
+    v0.9.0: the Gaussian sigma can be given as a ground distance (``sigma_unit='m'``,
+    ``sigma_m``) or as a number of calculation-grid pixels (``sigma_unit='px'``,
+    ``sigma_px``), the same as csmap-sheets v0.12.0. The calculation grid is the
+    reprojected DEM grid of ``cell_size`` (always square) on which relief() smooths.
+    The 'm' branch keeps the exact float expressions used up to v0.8.1.
+    """
+    if c.get('sigma_unit', 'm') == 'px':
+        sigma_px = c['sigma_px']
+        return sigma_px, math.ceil(4 * sigma_px)
+    return c['sigma_m'] / c['cell_size'], math.ceil(4 * c['sigma_m'] / c['cell_size'])
+
+
+def smoothing_record(c):
+    """Smoothing conditions for logs and run.json (setting and effective values kept apart)."""
+    sigma_px, radius = gaussian_sigma(c)
+    unit = c.get('sigma_unit', 'm')
+    return {
+        'gaussian_sigma_m': sigma_px * c['cell_size'] if unit == 'px' else c['sigma_m'],
+        'sigma_unit': unit,
+        'sigma_setting': c['sigma_px'] if unit == 'px' else c['sigma_m'],
+        'cell_size_m': c['cell_size'],
+        'effective_sigma_m': sigma_px * c['cell_size'] if unit == 'px' else c['sigma_m'],
+        'effective_sigma_px': sigma_px,
+        'kernel_radius_px': radius if sigma_px > 0 else 0,
+        'kernel_size_px': 2 * radius + 1 if sigma_px > 0 else 0,
+    }
+
+
+def smoothing_summary(c):
+    r = smoothing_record(c)
+    if r['effective_sigma_px'] == 0:
+        return f"Smoothing: none (sigma=0, unit {r['sigma_unit']})"
+    return (f"Smoothing: sigma {r['sigma_setting']:g} {r['sigma_unit']} on a "
+            f"{r['cell_size_m']:g} m grid = {r['effective_sigma_m']:g} m = "
+            f"{r['effective_sigma_px']:g} px; kernel {r['kernel_size_px']}x{r['kernel_size_px']} px")
+
+
 def relief(z, valid, cell, sigma_m, curvature_limit, slope_max, elev_range, color=None,
            color_model='legacy', stretch_mode='nagano_reference', stretch_range=None,
-           slope_algorithm='horn'):
+           slope_algorithm='horn', sigma_px=None):
     """Return RGBA, slope degrees and negative-Laplacian proxy (1/m).
 
     All samples touching a missing value within the full processing support
     are transparent. Callers must supply ceil(4*sigma_m/cell)+1 halo cells.
+    ``sigma_px`` (v0.9.0) gives sigma directly in grid pixels and then takes
+    precedence over ``sigma_m``; the halo is ceil(4*sigma_px)+1 in that case.
     """
     if color_model not in ('legacy', 'fme'):
         raise ValueError("color_model must be legacy or fme")
     if slope_algorithm not in SLOPE_ALGORITHMS:
         raise ValueError(f"slope_algorithm must be one of {SLOPE_ALGORITHMS}")
     tone = color_settings(color) if color_model == 'legacy' else None
-    radius = math.ceil(4 * sigma_m / cell)
+    if sigma_px is None:
+        radius = math.ceil(4 * sigma_m / cell)
+        sigma_grid = sigma_m / cell
+    else:
+        radius = math.ceil(4 * sigma_px)
+        sigma_grid = sigma_px
     halo = radius + 1
     valid = valid & np.isfinite(z)
     raw = np.where(valid, z, 0).astype(np.float64)
-    smooth = (gaussian_filter(raw, sigma=sigma_m / cell, radius=radius,
+    smooth = (gaussian_filter(raw, sigma=sigma_grid, radius=radius,
                               mode="constant", cval=0)
-              if sigma_m > 0 else raw.copy())
+              if sigma_grid > 0 else raw.copy())
     dx, dy = slope_gradients(raw, cell, slope_algorithm)
     slope = np.degrees(np.arctan(np.hypot(dx, dy)))
     curvature = -(np.roll(smooth, -1, 1) + np.roll(smooth, 1, 1)
@@ -266,7 +316,7 @@ def rendering_settings(c):
                 'nagano_reference_is_optional_empirical_value': True,
             },
             'curvature_sign': 'negative=concave/valley/blue; zero=yellow in curvature_b; positive=convex/ridge/red',
-            'smoothing': {'gaussian_sigma_m': c['sigma_m']},
+            'smoothing': smoothing_record(c) if 'cell_size' in c else {'gaussian_sigma_m': c['sigma_m']},
             'terrain_calculation': {
                 'slope': SLOPE_DESCRIPTIONS[c.get('slope_algorithm', 'horn')],
                 'slope_algorithm': c.get('slope_algorithm', 'horn'),
@@ -282,7 +332,7 @@ def rendering_settings(c):
             'curvature_1_per_m': [-c['curvature_limit'], c['curvature_limit']],
         },
         'colors': tone,
-        'smoothing': {'gaussian_sigma_m': c['sigma_m']},
+        'smoothing': smoothing_record(c) if 'cell_size' in c else {'gaussian_sigma_m': c['sigma_m']},
         'terrain_calculation': {
             'slope': SLOPE_DESCRIPTIONS[c.get('slope_algorithm', 'horn')],
             'slope_algorithm': c.get('slope_algorithm', 'horn'),
@@ -320,7 +370,11 @@ def read_config(path, overrides=None):
                     stretch_mode='nagano_reference', stretch_range=None,
                     # v0.8.0: 傾斜計算方式（ユーザー決定、2026-10-02）。既定Horn法。
                     # 中央差分法はv0.7.2以前の出力の再現用。
-                    slope_algorithm='horn')
+                    slope_algorithm='horn',
+                    # v0.9.0: Gaussian σの指定方式（csmap-sheets v0.12.0と同じ仕様、
+                    # 2026-10-03）。'm'＝地上距離（sigma_m。従来どおり・既定）、'px'＝計算格子の
+                    # 画素数（sigma_px）。方式ごとの値を別々に保持し、読み替えない。
+                    sigma_unit='m', sigma_px=3.0)
     defaults.update(XYZ_DEFAULTS)
     defaults.update(INPUT_DEFAULTS)
     unknown = set(c) - set(defaults) - {"inputs", "output_dir", "target_crs", "cell_size", "plane_zone"}
@@ -352,8 +406,12 @@ def read_config(path, overrides=None):
     for key in ("cell_size", "curvature_limit", "slope_max"):
         if not math.isfinite(c[key]) or c[key] <= 0:
             raise ValueError(f"{key} must be finite and positive")
-    if not math.isfinite(c["sigma_m"]) or c["sigma_m"] < 0:
-        raise ValueError("sigma_m must be finite and nonnegative")
+    if c["sigma_unit"] not in SIGMA_UNITS:
+        raise ValueError(f"sigma_unit must be one of {SIGMA_UNITS}")
+    for key in ("sigma_m", "sigma_px"):
+        if isinstance(c[key], bool) or not isinstance(c[key], (int, float)) \
+                or not math.isfinite(c[key]) or c[key] < 0:
+            raise ValueError(f"{key} must be finite and nonnegative")
     if not 0 < c["slope_max"] <= 90:
         raise ValueError("slope_max must be <= 90 degrees")
     er = c["elevation_range"]
@@ -373,7 +431,7 @@ def read_config(path, overrides=None):
         raise ValueError("Sheet dimensions exceed max_sheet_pixels")
     if c["compression"] not in ("DEFLATE", "NONE"):
         raise ValueError("compression must be DEFLATE or NONE")
-    if math.ceil(4*c["sigma_m"]/c["cell_size"]) > 512:
+    if gaussian_sigma(c)[1] > 512:
         raise ValueError("Gaussian radius >512 cells; reduce sigma or use coarser DEM")
     nd = c["source_nodata"]
     if nd is not None and not math.isfinite(nd):
@@ -469,7 +527,8 @@ def make_relief(dem_path, output_path, c, gdal):
                         + {"horn": "Horn", "central_difference": "central"}[c.get("slope_algorithm", "horn")]
                         + " slope, elevation tint")
     dst.SetMetadataItem("SETTINGS", json.dumps(c, ensure_ascii=True))
-    halo = math.ceil(4*c["sigma_m"]/c["cell_size"])+1
+    sigma_px, radius = gaussian_sigma(c)
+    halo = radius+1
     block = c["block_size"]
     band = src.GetRasterBand(1)
     valid_count = 0
@@ -483,7 +542,8 @@ def make_relief(dem_path, output_path, c, gdal):
             rgba, _, _ = relief(a, valid, c["cell_size"], c["sigma_m"],
                 c["curvature_limit"], c["slope_max"], c["elevation_range"], c.get('color'),
                 c.get('color_model', 'legacy'), c.get('stretch_mode', 'nagano_reference'),
-                c.get('stretch_range'), c.get('slope_algorithm', 'horn'))
+                c.get('stretch_range'), c.get('slope_algorithm', 'horn'),
+                sigma_px if c.get('sigma_unit', 'm') == 'px' else None)
             tile = rgba[y-y0:y-y0+bh, x-x0:x-x0+bw]
             valid_count += int(np.count_nonzero(tile[:, :, 3]))
             for b in range(4):
@@ -509,7 +569,7 @@ def render_sheets(projected_path, out, c, gdal, ogr, osr):
         ('sheet_level',ogr.OFTInteger),('file',ogr.OFTString),('cell_m',ogr.OFTReal),
         ('valid_px',ogr.OFTInteger64)):layer.CreateField(ogr.FieldDefn(name,kind))
     width_m,height_m=dimensions(c['sheet_level']);width=round(width_m/c['cell_size']);height=round(height_m/c['cell_size'])
-    halo=math.ceil(4*c['sigma_m']/c['cell_size'])+1
+    halo=gaussian_sigma(c)[1]+1
     written=[];skipped=0;valid_total=0
     for number,sheet in enumerate(candidates,1):
         dem_path=work/(sheet.code+'_dem.tif');relief_path=work/(sheet.code+'_rgba.tif')
@@ -591,6 +651,7 @@ def run(c):
         save()
         print(mosaic_message(c, input_report), flush=True)
         print("Slope algorithm: " + c.get("slope_algorithm", "horn"), flush=True)
+        print(smoothing_summary(c), flush=True)
         kwargs = dict(resolution="highest", VRTNodata=NODATA, strict=True)
         if c["source_nodata"] is not None:
             kwargs["srcNodata"] = c["source_nodata"]
