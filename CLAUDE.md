@@ -50,7 +50,7 @@ Claude Code から claude.ai（Project）へ伝えることがあるときは、
 Markdown ファイルを1件追加する。
 Drive に書けないときは、Markdown をユーザーに提示する。
 
-- フォルダ: 「林野庁オープン化_Claude連絡」。フォルダ ID はこのリポジトリが公開のため記載しない。
+- フォルダ: 「Claude連絡」を含む名前の連絡用フォルダ。フォルダ ID はこのリポジトリが公開のため記載しない。
   非公開の現在地メモまたはユーザーに確認する。
 - ファイル名: `YYYYMMDD-HHMM_<from>-to-<to>_<件名>.md`（時刻は JST。`ai` = claude.ai、`code` = Claude Code）。
   例: `20260930-1000_code-to-ai_fme-csmap-pipeline_結果.md`
