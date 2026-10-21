@@ -1,3 +1,14 @@
+# 未リリース
+
+既定の計算結果はv0.9.0から変わらない（設定キーの予約のみで、機能追加なし）。
+
+- 設定キー`nodata_edge_mode`を予約した。QGISプラグイン版（csmap-sheets）の同名キーとそろえ、設定の食い違いを防ぐため。
+  - 対応値は`safe_mask`のみ（従来の欠測・外縁の扱い）。キーのない設定も`safe_mask`として読み、出力は変わらない。
+  - プラグイン版の`pss_approximation`は本CLIでは未実装で、明確なエラーで停止する（黙って`safe_mask`に読み替えない）。その他の値、文字列以外の値もエラー。
+  - 使った値を`run.json`（`settings`と`rendering.terrain_calculation`）、GeoTIFFの`SETTINGS`、実行ログに記録する。GeoTIFFの`SETTINGS`にキーが1つ増えるが、画素値は変わらない。
+  - 同梱の設定ファイル14件は変更していない。
+  - Windows・FME実機での確認は未実施。
+
 # v0.9.0 - 2026-10-04
 
 既存の設定（`sigma_unit`なし）の計算結果はv0.8.1から変わらない。曲率用平滑化のσを計算格子の画素数でも指定できるようにした（QGISプラグイン版csmap-sheets v0.12.0と同じ仕様）。

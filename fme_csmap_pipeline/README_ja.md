@@ -101,6 +101,7 @@ FMEへ結果を読み戻す場合は、成功後にFeatureReaderで `sheet_index
 |stretch_mode|`none`／`nagano_reference`（既定、長野県実績値）／`custom`。`color_model:"fme"`のときのみ意味を持つ|
 |stretch_range|`stretch_mode:"custom"`のときのR/G/B各[low, high]（0〜255）|
 |source_nodata|nullなら入力メタデータを採用。全入力共通の欠損値を上書きする時だけ数値|
+|nodata_edge_mode|欠測・端部の処理方式。**`"safe_mask"`のみ対応**（省略時も`"safe_mask"`、従来どおり計算範囲が欠測・画像外に触れる画素を透過）。QGISプラグイン版（csmap-sheets）と設定キーをそろえるための予約で、プラグイン版の`"pss_approximation"`は本CLIでは**未実装**としてエラーで停止します（`"safe_mask"`へ読み替えません）。その他の値・文字列以外もエラー|
 |confirm_elevation_metres|全入力標高がm単位かつ鉛直基準統一済みと確認したらtrue|
 |compression|図郭GeoTIFFの圧縮。DEFLATE（可逆）またはNONE（非圧縮）|
 |block_size|解析・切出し時の内部処理単位。初期値512。図郭サイズとは別|
@@ -145,6 +146,8 @@ GeoTIFF側の座標は東方向E・北方向Nです。測量座標のX=N、Y=E�
 ## CS画像の独自計算
 
 傾斜は平滑化前のマージDEMから `atan(sqrt(zE²+zN²))` を度で計算します。勾配の求め方は設定 `slope_algorithm` で選べます。既定はHorn法（3×3加重差分、v0.8.0以降）で、`central_difference`（2点の中央差分）を指定するとv0.7.2以前と同じ計算になります。**v0.8.0で既定が変わったため、以前と同じ設定でも傾斜に由来する色が変わります。** PSS版（FMEワークスペース）もHorn法ですが、欠測・外縁・平滑化の扱いが異なるため、画素単位の完全一致は目標にしていません。
+
+欠測・外縁の扱いは`nodata_edge_mode`の`"safe_mask"`（既定・唯一の対応値）で、v0.9.0から変わりません。選んだ値は`run.json`の`settings`と`rendering.terrain_calculation`、GeoTIFFの`SETTINGS`メタデータ、実行ログ（`NoData edge mode: ...`）に記録します。QGISプラグイン版の`"pss_approximation"`（PSS互換を目指す計算用補完）は本CLIでは未実装です。
 
 曲率指標はGaussian平滑化後の負のラプラシアン `C=-(z東+z西+z北+z南-4z中央)/cell_size²`（1/m）です。凸型を茶系、凹型を青系に配色し、標準設定では固定標高範囲の淡色を15%混ぜ、傾斜に応じて明度を下げます。v0.3.0では下記のcolor設定で色と合成係数を変更できます。曲率指標は断面曲率・平面曲率・平均曲率と同一ではありません。鞍部等で相殺する場合があります。
 
