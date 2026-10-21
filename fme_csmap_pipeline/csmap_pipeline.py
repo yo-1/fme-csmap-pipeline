@@ -142,6 +142,22 @@ def _fme_relief(raw, slope, curvature, curvature_limit, slope_max, elev_range, c
 
 
 SLOPE_ALGORITHMS = ('horn', 'central_difference')
+# 欠測・端部の処理方式。キーはQGISプラグイン版（csmap-sheets）と同じ名前で予約するだけで、
+# このCLIが実装しているのは従来の safe_mask のみ。pss_approximation はプラグイン版の
+# 方式だが未実装のため、黙って safe_mask に読み替えずエラーにする。
+NODATA_EDGE_MODES = ('safe_mask',)
+UNIMPLEMENTED_NODATA_EDGE_MODES = ('pss_approximation',)
+NODATA_EDGE_HANDLING = 'transparent where the full processing support touches NoData or exterior'
+
+
+def validate_nodata_edge_mode(value):
+    if not isinstance(value, str):
+        raise ValueError('nodata_edge_mode must be a string; only "safe_mask" is supported')
+    if value in UNIMPLEMENTED_NODATA_EDGE_MODES:
+        raise ValueError(f'nodata_edge_mode "{value}" is not implemented in this CLI '
+                         '(reserved for compatibility with csmap-sheets); use "safe_mask"')
+    if value not in NODATA_EDGE_MODES:
+        raise ValueError(f'nodata_edge_mode must be one of {NODATA_EDGE_MODES}')
 SLOPE_DESCRIPTIONS = {
     'horn': 'Horn (1981) 3x3 weighted differences of unsmoothed elevation (degrees)',
     'central_difference': '2-point central differences of unsmoothed elevation (degrees)',
@@ -320,6 +336,8 @@ def rendering_settings(c):
             'terrain_calculation': {
                 'slope': SLOPE_DESCRIPTIONS[c.get('slope_algorithm', 'horn')],
                 'slope_algorithm': c.get('slope_algorithm', 'horn'),
+                'nodata_edge_mode': c.get('nodata_edge_mode', 'safe_mask'),
+                'nodata_edge_handling': NODATA_EDGE_HANDLING,
                 'curvature': 'negative Laplacian of Gaussian-smoothed elevation (1/m); FME workspace confirmed same sign/kernel shape (VALIDATION.txt)',
             },
         }
@@ -336,6 +354,8 @@ def rendering_settings(c):
         'terrain_calculation': {
             'slope': SLOPE_DESCRIPTIONS[c.get('slope_algorithm', 'horn')],
             'slope_algorithm': c.get('slope_algorithm', 'horn'),
+            'nodata_edge_mode': c.get('nodata_edge_mode', 'safe_mask'),
+            'nodata_edge_handling': NODATA_EDGE_HANDLING,
         },
     }
 
@@ -374,7 +394,10 @@ def read_config(path, overrides=None):
                     # v0.9.0: Gaussian σの指定方式（csmap-sheets v0.12.0と同じ仕様、
                     # 2026-10-03）。'm'＝地上距離（sigma_m。従来どおり・既定）、'px'＝計算格子の
                     # 画素数（sigma_px）。方式ごとの値を別々に保持し、読み替えない。
-                    sigma_unit='m', sigma_px=3.0)
+                    sigma_unit='m', sigma_px=3.0,
+                    # 欠測・端部の処理方式（csmap-sheetsとキーを共通化するための予約）。
+                    # 実装はsafe_maskのみ。キーのない設定もsafe_maskで、出力は従来どおり。
+                    nodata_edge_mode='safe_mask')
     defaults.update(XYZ_DEFAULTS)
     defaults.update(INPUT_DEFAULTS)
     unknown = set(c) - set(defaults) - {"inputs", "output_dir", "target_crs", "cell_size", "plane_zone"}
@@ -387,6 +410,7 @@ def read_config(path, overrides=None):
         raise ValueError('color_model must be legacy or fme')
     if c['slope_algorithm'] not in SLOPE_ALGORITHMS:
         raise ValueError(f"slope_algorithm must be one of {SLOPE_ALGORITHMS}")
+    validate_nodata_edge_mode(c['nodata_edge_mode'])
     if 'slope_algorithm' not in provided:
         # v0.7.2以前の設定は中央差分法で作られていたため、既定のHorn法が黙って
         # 適用されると色の変化に気づきにくい。再現方法とあわせて警告する。
@@ -651,6 +675,7 @@ def run(c):
         save()
         print(mosaic_message(c, input_report), flush=True)
         print("Slope algorithm: " + c.get("slope_algorithm", "horn"), flush=True)
+        print("NoData edge mode: " + c.get("nodata_edge_mode", "safe_mask"), flush=True)
         print(smoothing_summary(c), flush=True)
         kwargs = dict(resolution="highest", VRTNodata=NODATA, strict=True)
         if c["source_nodata"] is not None:

@@ -91,3 +91,20 @@ v0.9.0 σの指定方式（m／px）、モザイクのログ表記 (2026-10-04):
   分割計算の継ぎ目、記録内容。GDAL結合テスト：0.5m格子でm方式1mとpx方式2pxの図郭が完全一致。
 - テスト結果：GDAL/PDALなし（Python 3.12、numpy・scipy）失敗0。GDAL 3.8＋scipy 失敗0（PDALのテストは未実行）。
 - 未確認：Windows・FME実機での実行。
+
+未リリース nodata_edge_mode の予約（機能追加なし） (2026-10-21):
+- 設定`nodata_edge_mode`を追加。対応値は`safe_mask`のみで、キーなしも`safe_mask`。QGISプラグイン版
+  csmap-sheetsの同名キーとそろえるための予約。`pss_approximation`は未実装としてエラー、その他の値・
+  文字列以外もエラー。使った値をrun.json（settings、rendering.terrain_calculation）、GeoTIFFの
+  SETTINGS、実行ログに記録。計算処理は変更していない。同梱の設定ファイル14件は変更していない。
+- ユニットテスト（追加8件）：キーなし、safe_mask、pss_approximation（未実装エラー）、不正値4種、
+  型違い6種、両color_modelの記録、同梱設定14件にキーがないこと、GDAL結合（キーなしとsafe_mask明示の
+  出力一致・run.jsonの記録・欠測穴の透過）。
+- テスト結果：GDAL/PDALなし（Python 3.12、numpy・scipy）103件実行、成功94、スキップ9、失敗0。
+  GDAL 3.8.4＋NumPy 1.26.4＋SciPy 1.13.1：103件実行、成功102、スキップ1（PDAL）、失敗0。
+- 既定出力の同一性：v0.9.0タグ（1a301f7）と本変更で、同じ合成DEM（2枚・重なり・内部の欠測穴・
+  外周に接する欠測・角の欠落）を処理して比較。同梱のラスター用設定7件（入力・出力先・系番号・
+  図郭レベル500・XYZズーム14〜16だけ上書き）と、中央差分法・σ px・最小設定の3件、計10条件の
+  図郭GeoTIFF・XYZタイル計100ラスタの寸法・ジオトランスフォーム・画素値が全一致（差0）。
+  run.jsonのsettingsの差は新キーnodata_edge_modeのみ。
+- 未確認：Windows・FME実機での実行、ラスター以外の同梱設定（GSI・LAS・テキスト・森林）での比較。
